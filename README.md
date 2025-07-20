@@ -9,7 +9,7 @@ This provides a comprehensive payment processing system with full security, auth
 
 - **Health Check**: [http://localhost:3000/health](http://localhost:3000/health)
 
-## 🚀 ** Features**
+## 🚀  Features
 
 ### 🔐 **Security & Authentication**
 - **API Key Management**: Secure API key generation and validation
