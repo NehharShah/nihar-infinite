@@ -1,0 +1,308 @@
+/* Custom Swagger UI Styles */
+:root {
+  --swagger-primary: #3b82f6;
+  --swagger-secondary: #6366f1;
+  --swagger-success: #10b981;
+  --swagger-warning: #f59e0b;
+  --swagger-error: #ef4444;
+  --swagger-bg: #ffffff;
+  --swagger-text: #1e293b;
+  --swagger-border: #e2e8f0;
+}
+
+/* Header and branding */
+.swagger-ui .topbar {
+  background: linear-gradient(135deg, var(--swagger-primary) 0%, var(--swagger-secondary) 100%);
+  padding: 1rem 0;
+}
+
+.swagger-ui .topbar .download-url-wrapper {
+  display: none;
+}
+
+.swagger-ui .topbar .link {
+  color: white;
+  font-weight: 600;
+}
+
+.swagger-ui .topbar .link:hover {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* Main content area */
+.swagger-ui .info {
+  margin: 2rem 0;
+  padding: 2rem;
+  background: var(--swagger-bg);
+  border: 1px solid var(--swagger-border);
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.swagger-ui .info .title {
+  color: var(--swagger-text);
+  font-size: 2rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.swagger-ui .info .description {
+  color: #64748b;
+  font-size: 1.1rem;
+  line-height: 1.6;
+}
+
+/* Operation blocks */
+.swagger-ui .opblock {
+  margin: 1rem 0;
+  border-radius: 0.5rem;
+  border: 1px solid var(--swagger-border);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.swagger-ui .opblock.opblock-get {
+  border-color: var(--swagger-primary);
+}
+
+.swagger-ui .opblock.opblock-post {
+  border-color: var(--swagger-success);
+}
+
+.swagger-ui .opblock.opblock-put {
+  border-color: var(--swagger-warning);
+}
+
+.swagger-ui .opblock.opblock-delete {
+  border-color: var(--swagger-error);
+}
+
+.swagger-ui .opblock .opblock-summary {
+  padding: 1rem;
+  background: #f8fafc;
+}
+
+.swagger-ui .opblock .opblock-summary-method {
+  border-radius: 0.25rem;
+  font-weight: 600;
+  min-width: 80px;
+  text-align: center;
+}
+
+.swagger-ui .opblock.opblock-get .opblock-summary-method {
+  background: var(--swagger-primary);
+}
+
+.swagger-ui .opblock.opblock-post .opblock-summary-method {
+  background: var(--swagger-success);
+}
+
+.swagger-ui .opblock.opblock-put .opblock-summary-method {
+  background: var(--swagger-warning);
+}
+
+.swagger-ui .opblock.opblock-delete .opblock-summary-method {
+  background: var(--swagger-error);
+}
+
+/* Try it out section */
+.swagger-ui .opblock .opblock-section {
+  padding: 1rem;
+}
+
+.swagger-ui .btn.execute {
+  background: var(--swagger-primary);
+  border-color: var(--swagger-primary);
+  color: white;
+  border-radius: 0.25rem;
+  font-weight: 600;
+  padding: 0.5rem 1rem;
+}
+
+.swagger-ui .btn.execute:hover {
+  background: #2563eb;
+  border-color: #2563eb;
+}
+
+/* Response section */
+.swagger-ui .responses-wrapper {
+  margin-top: 1rem;
+}
+
+.swagger-ui .responses-table .response {
+  border-radius: 0.25rem;
+  margin: 0.5rem 0;
+}
+
+.swagger-ui .responses-table .response.response-200 {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+}
+
+.swagger-ui .responses-table .response.response-201 {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+}
+
+.swagger-ui .responses-table .response.response-400 {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+}
+
+.swagger-ui .responses-table .response.response-401 {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+}
+
+.swagger-ui .responses-table .response.response-404 {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+}
+
+.swagger-ui .responses-table .response.response-500 {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+}
+
+/* Models section */
+.swagger-ui .model {
+  background: #f8fafc;
+  border: 1px solid var(--swagger-border);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin: 1rem 0;
+}
+
+.swagger-ui .model .model-title {
+  color: var(--swagger-text);
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+/* Schema section */
+.swagger-ui .model .model-title .model-title__text {
+  color: var(--swagger-primary);
+}
+
+/* Parameters */
+.swagger-ui .parameters-container .parameter__name {
+  font-weight: 600;
+  color: var(--swagger-text);
+}
+
+.swagger-ui .parameters-container .parameter__type {
+  color: var(--swagger-primary);
+  font-weight: 500;
+}
+
+.swagger-ui .parameters-container .parameter__required {
+  color: var(--swagger-error);
+  font-weight: 600;
+}
+
+/* Code samples */
+.swagger-ui .highlight-code {
+  background: #1e293b;
+  color: #e2e8f0;
+  border-radius: 0.25rem;
+  padding: 1rem;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+/* Authorization */
+.swagger-ui .auth-wrapper {
+  background: #f8fafc;
+  border: 1px solid var(--swagger-border);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin: 1rem 0;
+}
+
+.swagger-ui .auth-wrapper .authorize__btn {
+  background: var(--swagger-primary);
+  border-color: var(--swagger-primary);
+  color: white;
+  border-radius: 0.25rem;
+  font-weight: 600;
+  padding: 0.5rem 1rem;
+}
+
+.swagger-ui .auth-wrapper .authorize__btn:hover {
+  background: #2563eb;
+  border-color: #2563eb;
+}
+
+/* General improvements */
+.swagger-ui {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: var(--swagger-text);
+}
+
+.swagger-ui .scheme-container {
+  background: #f8fafc;
+  border: 1px solid var(--swagger-border);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin: 1rem 0;
+}
+
+.swagger-ui .scheme-container .scheme-title {
+  color: var(--swagger-text);
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .swagger-ui .info {
+    padding: 1rem;
+    margin: 1rem 0;
+  }
+  
+  .swagger-ui .info .title {
+    font-size: 1.5rem;
+  }
+  
+  .swagger-ui .opblock .opblock-summary {
+    padding: 0.75rem;
+  }
+  
+  .swagger-ui .opblock .opblock-section {
+    padding: 0.75rem;
+  }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --swagger-bg: #0f172a;
+    --swagger-text: #f8fafc;
+    --swagger-border: #334155;
+  }
+  
+  .swagger-ui .info {
+    background: #1e293b;
+    border-color: #334155;
+  }
+  
+  .swagger-ui .opblock .opblock-summary {
+    background: #1e293b;
+  }
+  
+  .swagger-ui .model {
+    background: #1e293b;
+    border-color: #334155;
+  }
+  
+  .swagger-ui .auth-wrapper {
+    background: #1e293b;
+    border-color: #334155;
+  }
+  
+  .swagger-ui .scheme-container {
+    background: #1e293b;
+    border-color: #334155;
+  }
+} 
