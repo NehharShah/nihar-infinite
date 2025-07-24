@@ -1,38 +1,30 @@
 import { v4 as uuidv4 } from 'uuid';
 import { Database } from '../database/database.js';
 import { FeeEngine } from './feeEngine.js';
-import { OnrampService, OnrampRequest } from './onrampService.js';
-import { OfframpService, OfframpRequest } from './offrampService.js';
-import { WebhookService } from './webhookService.js';
 import { ExchangeRateService } from './exchangeRateService.js';
+import { temporalClient } from '../temporal/client.js';
+import type { PaymentWorkflowInput } from '../temporal/workflows/paymentWorkflow.js';
 import {
   Payment,
   PaymentStatus,
   CreatePaymentRequest,
   PaymentResponse,
-  WebhookEventType,
-  TransactionStatus
+  WebhookEventType
 } from '../types/payment.js';
 
 export class PaymentOrchestrator {
   private db: Database;
   private feeEngine: FeeEngine;
-  private onrampService: OnrampService;
-  private offrampService: OfframpService;
-  private webhookService: WebhookService;
   private exchangeRateService: ExchangeRateService;
 
   constructor() {
     this.db = Database.getInstance();
     this.feeEngine = new FeeEngine();
-    this.onrampService = new OnrampService();
-    this.offrampService = new OfframpService();
-    this.webhookService = new WebhookService();
     this.exchangeRateService = new ExchangeRateService();
   }
 
   /**
-   * Create a new cross-border payment
+   * Create a new cross-border payment using Temporal workflow
    */
   async createPayment(request: CreatePaymentRequest): Promise<PaymentResponse> {
     // Check for existing payment with same idempotency key
@@ -46,13 +38,13 @@ export class PaymentOrchestrator {
       throw new Error(`Destination currency ${request.destination_currency} is not supported`);
     }
 
-    // Get current exchange rate
+    // Get current exchange rate for initial calculation
     const exchangeRate = await this.exchangeRateService.getExchangeRate(
       request.source_currency,
       request.destination_currency
     );
 
-    // Calculate amounts and fees
+    // Calculate amounts and fees for initial response
     const destinationAmount = request.source_amount * exchangeRate;
     const feeCalculation = await this.feeEngine.calculateFees(
       request.destination_currency,
@@ -63,7 +55,7 @@ export class PaymentOrchestrator {
     const feeInSourceCurrency = feeCalculation.total_fee / exchangeRate;
     const totalAmount = request.source_amount + feeInSourceCurrency;
 
-    // Create payment record
+    // Create payment record with PENDING status
     const paymentId = uuidv4();
     const payment: Omit<Payment, 'created_at' | 'updated_at'> = {
       id: paymentId,
@@ -100,17 +92,26 @@ export class PaymentOrchestrator {
       ]
     );
 
-    // Trigger webhook for payment creation
-    if (request.webhook_url) {
-      await this.webhookService.scheduleWebhook(
-        paymentId,
-        WebhookEventType.PAYMENT_CREATED,
-        { payment, webhook_url: request.webhook_url }
-      );
-    }
+    // Start Temporal workflow for payment processing
+    const workflowInput: PaymentWorkflowInput = {
+      paymentId,
+      userId: request.user_id,
+      idempotencyKey: request.idempotency_key,
+      sourceAmount: request.source_amount,
+      sourceCurrency: request.source_currency,
+      destinationCurrency: request.destination_currency,
+      webhookUrl: request.webhook_url
+    };
 
-    // Start payment processing
-    this.processPayment(paymentId);
+    try {
+      await temporalClient.startPaymentWorkflow(workflowInput);
+      console.log(`Started Temporal workflow for payment ${paymentId}`);
+    } catch (error) {
+      console.error(`Failed to start Temporal workflow for payment ${paymentId}:`, error);
+      // Update payment status to failed
+      await this.updatePaymentStatus(paymentId, PaymentStatus.FAILED);
+      throw new Error('Failed to start payment processing');
+    }
 
     const createdPayment = await this.getPaymentById(paymentId);
     return this.paymentToResponse(createdPayment!);
@@ -170,179 +171,37 @@ export class PaymentOrchestrator {
   }
 
   /**
-   * Process payment through onramp and offramp
+   * Get workflow status for a payment
    */
-  private async processPayment(paymentId: string): Promise<void> {
+  async getWorkflowStatus(paymentId: string): Promise<any> {
+    const workflowId = `payment-${paymentId}`;
     try {
-      // Update status to processing
-      await this.updatePaymentStatus(paymentId, PaymentStatus.PROCESSING);
-
-      const payment = await this.getPaymentById(paymentId);
-      if (!payment) {
-        throw new Error(`Payment ${paymentId} not found`);
-      }
-
-      // Step 1: Process USD collection (onramp)
-      const onrampRequest: OnrampRequest = {
-        payment_id: paymentId,
-        amount: payment.total_amount,
-        currency: payment.source_currency,
-        user_id: payment.user_id,
-        payment_method: {
-          type: 'card', // Default for simulation
-          details: {}
-        }
-      };
-
-      const onrampResponse = await this.onrampService.processUSDCollection(onrampRequest);
-      
-      // Update payment with onramp reference
-      await this.db.run(
-        'UPDATE payments SET onramp_reference = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-        [onrampResponse.external_reference, paymentId]
-      );
-
-      // Monitor onramp completion
-      this.monitorOnrampCompletion(paymentId, onrampResponse.transaction_id);
-
+      return await temporalClient.getWorkflowStatus(workflowId);
     } catch (error) {
-      console.error(`Payment processing failed for ${paymentId}:`, error);
-      await this.updatePaymentStatus(paymentId, PaymentStatus.FAILED);
+      console.error(`Failed to get workflow status for ${workflowId}:`, error);
+      return null;
     }
   }
 
   /**
-   * Monitor onramp completion and trigger offramp
+   * Cancel payment workflow
    */
-  private async monitorOnrampCompletion(paymentId: string, onrampTransactionId: string): Promise<void> {
-    const checkInterval = setInterval(async () => {
-      try {
-        const onrampTransaction = await this.onrampService.getTransactionStatus(onrampTransactionId);
-        
-        if (!onrampTransaction) {
-          clearInterval(checkInterval);
-          await this.updatePaymentStatus(paymentId, PaymentStatus.FAILED);
-          return;
-        }
-
-        if (onrampTransaction.status === TransactionStatus.COMPLETED) {
-          clearInterval(checkInterval);
-          await this.updatePaymentStatus(paymentId, PaymentStatus.ONRAMP_COMPLETE);
-          
-          // Trigger webhook for onramp completion
-          await this.webhookService.scheduleWebhook(
-            paymentId,
-            WebhookEventType.ONRAMP_COMPLETED,
-            { transaction: onrampTransaction }
-          );
-
-          // Start offramp process
-          await this.processOfframp(paymentId);
-
-        } else if (onrampTransaction.status === TransactionStatus.FAILED) {
-          clearInterval(checkInterval);
-          await this.updatePaymentStatus(paymentId, PaymentStatus.FAILED);
-        }
-      } catch (error) {
-        console.error(`Error monitoring onramp for payment ${paymentId}:`, error);
-        clearInterval(checkInterval);
-        await this.updatePaymentStatus(paymentId, PaymentStatus.FAILED);
-      }
-    }, 5000); // Check every 5 seconds
-
-    // Timeout after 30 minutes
-    setTimeout(() => {
-      clearInterval(checkInterval);
-    }, 30 * 60 * 1000);
-  }
-
-  /**
-   * Process offramp (stablecoin to local currency)
-   */
-  private async processOfframp(paymentId: string): Promise<void> {
-    try {
-      await this.updatePaymentStatus(paymentId, PaymentStatus.OFFRAMP_PROCESSING);
-
-      const payment = await this.getPaymentById(paymentId);
-      if (!payment) {
-        throw new Error(`Payment ${paymentId} not found`);
-      }
-
-      // Mock recipient details (in real system, would be provided by user)
-      const recipientDetails = {
-        name: `User ${payment.user_id}`,
-        country: this.getCurrencyCountry(payment.destination_currency),
-        account_number: 'MOCK_ACCOUNT_123',
-        bank_name: 'Mock Bank'
-      };
-
-      const offrampRequest: OfframpRequest = {
-        payment_id: paymentId,
-        amount: payment.destination_amount,
-        source_currency: 'USDC', // Simulating stablecoin
-        destination_currency: payment.destination_currency,
-        exchange_rate: 1, // Already converted
-        user_id: payment.user_id,
-        recipient_details: recipientDetails
-      };
-
-      const offrampResponse = await this.offrampService.processLocalCurrencyPayout(offrampRequest);
-      
-      // Update payment with offramp reference
-      await this.db.run(
-        'UPDATE payments SET offramp_reference = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-        [offrampResponse.external_reference, paymentId]
-      );
-
-      // Monitor offramp completion
-      this.monitorOfframpCompletion(paymentId, offrampResponse.transaction_id);
-
-    } catch (error) {
-      console.error(`Offramp processing failed for ${paymentId}:`, error);
-      await this.updatePaymentStatus(paymentId, PaymentStatus.FAILED);
+  async cancelPayment(paymentId: string): Promise<boolean> {
+    const payment = await this.getPaymentById(paymentId);
+    
+    if (!payment || payment.status === PaymentStatus.COMPLETED || payment.status === PaymentStatus.FAILED) {
+      return false;
     }
-  }
 
-  /**
-   * Monitor offramp completion
-   */
-  private async monitorOfframpCompletion(paymentId: string, offrampTransactionId: string): Promise<void> {
-    const checkInterval = setInterval(async () => {
-      try {
-        const offrampTransaction = await this.offrampService.getTransactionStatus(offrampTransactionId);
-        
-        if (!offrampTransaction) {
-          clearInterval(checkInterval);
-          await this.updatePaymentStatus(paymentId, PaymentStatus.FAILED);
-          return;
-        }
-
-        if (offrampTransaction.status === TransactionStatus.COMPLETED) {
-          clearInterval(checkInterval);
-          await this.updatePaymentStatus(paymentId, PaymentStatus.COMPLETED);
-          
-          // Trigger webhook for completion
-          await this.webhookService.scheduleWebhook(
-            paymentId,
-            WebhookEventType.PAYMENT_COMPLETED,
-            { transaction: offrampTransaction }
-          );
-
-        } else if (offrampTransaction.status === TransactionStatus.FAILED) {
-          clearInterval(checkInterval);
-          await this.updatePaymentStatus(paymentId, PaymentStatus.FAILED);
-        }
-      } catch (error) {
-        console.error(`Error monitoring offramp for payment ${paymentId}:`, error);
-        clearInterval(checkInterval);
-        await this.updatePaymentStatus(paymentId, PaymentStatus.FAILED);
-      }
-    }, 5000); // Check every 5 seconds
-
-    // Timeout after 2 hours
-    setTimeout(() => {
-      clearInterval(checkInterval);
-    }, 2 * 60 * 60 * 1000);
+    try {
+      const workflowId = `payment-${paymentId}`;
+      await temporalClient.cancelWorkflow(workflowId);
+      await this.updatePaymentStatus(paymentId, PaymentStatus.CANCELLED);
+      return true;
+    } catch (error) {
+      console.error(`Failed to cancel workflow for payment ${paymentId}:`, error);
+      return false;
+    }
   }
 
   /**
@@ -353,29 +212,6 @@ export class PaymentOrchestrator {
       'UPDATE payments SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
       [status, paymentId]
     );
-
-    // Trigger status webhook
-    await this.webhookService.scheduleWebhook(
-      paymentId,
-      this.getWebhookEventForStatus(status),
-      { status }
-    );
-  }
-
-  /**
-   * Get webhook event type for payment status
-   */
-  private getWebhookEventForStatus(status: PaymentStatus): WebhookEventType {
-    switch (status) {
-      case PaymentStatus.PROCESSING:
-        return WebhookEventType.PAYMENT_PROCESSING;
-      case PaymentStatus.COMPLETED:
-        return WebhookEventType.PAYMENT_COMPLETED;
-      case PaymentStatus.FAILED:
-        return WebhookEventType.PAYMENT_FAILED;
-      default:
-        return WebhookEventType.PAYMENT_PROCESSING;
-    }
   }
 
   /**
@@ -397,38 +233,6 @@ export class PaymentOrchestrator {
       estimated_completion: estimatedCompletion.toISOString(),
       created_at: payment.created_at
     };
-  }
-
-  /**
-   * Get country for currency (for mock recipient details)
-   */
-  private getCurrencyCountry(currency: string): string {
-    const currencyToCountry: Record<string, string> = {
-      'EUR': 'DE',
-      'GBP': 'GB',
-      'CAD': 'CA',
-      'AUD': 'AU',
-      'JPY': 'JP',
-      'INR': 'IN',
-      'BRL': 'BR',
-      'MXN': 'MX'
-    };
-
-    return currencyToCountry[currency] || 'US';
-  }
-
-  /**
-   * Cancel payment (if still processing)
-   */
-  async cancelPayment(paymentId: string): Promise<boolean> {
-    const payment = await this.getPaymentById(paymentId);
-    
-    if (!payment || payment.status === PaymentStatus.COMPLETED || payment.status === PaymentStatus.FAILED) {
-      return false;
-    }
-
-    await this.updatePaymentStatus(paymentId, PaymentStatus.CANCELLED);
-    return true;
   }
 
   /**

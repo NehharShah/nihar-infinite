@@ -11,7 +11,8 @@ export const initializeDatabase = async () => {
     // Create audit logging tables
     await createAuditTables(db);
     
-
+    // Create file upload tables
+    await createFileUploadTables(db);
     
     // Create initial admin user and API key
     await createInitialData(db);
@@ -100,6 +101,43 @@ async function createAuditTables(db: Database) {
       FOREIGN KEY (user_id) REFERENCES users (id),
       FOREIGN KEY (api_key_id) REFERENCES api_keys (id)
     )
+  `);
+}
+
+async function createFileUploadTables(db: Database) {
+  // File uploads table
+  await db.run(`
+    CREATE TABLE IF NOT EXISTS file_uploads (
+      id TEXT PRIMARY KEY,
+      resource_type TEXT NOT NULL,
+      resource_id TEXT NOT NULL,
+      file_name TEXT NOT NULL,
+      file_size INTEGER NOT NULL,
+      content_type TEXT NOT NULL,
+      gcp_bucket TEXT NOT NULL,
+      gcp_key TEXT NOT NULL,
+      upload_status TEXT NOT NULL DEFAULT 'pending',
+      user_id TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users (id)
+    )
+  `);
+
+  // Create indexes for better performance
+  await db.run(`
+    CREATE INDEX IF NOT EXISTS idx_file_uploads_resource 
+    ON file_uploads (resource_type, resource_id)
+  `);
+
+  await db.run(`
+    CREATE INDEX IF NOT EXISTS idx_file_uploads_user 
+    ON file_uploads (user_id)
+  `);
+
+  await db.run(`
+    CREATE INDEX IF NOT EXISTS idx_file_uploads_status 
+    ON file_uploads (upload_status)
   `);
 }
 

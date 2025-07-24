@@ -1,0 +1,937 @@
+openapi: 3.0.0
+info:
+  title: Cross-Border Payment API with Temporal Workflows
+  version: 1.0.0
+  description: |
+    A comprehensive REST API for cross-border payments with Temporal workflow orchestration.
+    
+    ## Features
+    - **Cross-Border Payments**: USD to multi-currency payouts
+    - **Fee Engine**: Dynamic fee calculation based on amount and destination
+    - **Temporal Workflows**: Reliable payment processing with workflow orchestration
+    - **Onramp/Offramp**: Mock integrations for payment providers
+    - **Idempotency**: UUID-based idempotency for duplicate request prevention
+    - **Webhooks**: Real-time payment status notifications
+    - **Admin Panel**: User and API key management
+    - **Audit Logging**: Comprehensive activity tracking
+    
+    ## Architecture
+    - **Backend**: Node.js + TypeScript + Express
+    - **Database**: SQLite (dev) / PostgreSQL (prod)
+    - **Workflow Engine**: Temporal
+    - **Authentication**: JWT + API Keys
+    - **Documentation**: Swagger/OpenAPI 3.0
+    
+    ## Quick Start
+    1. Start Temporal: `temporal server start-dev`
+    2. Start API: `npm run dev`
+    3. Start Workers: `npm run worker`
+    4. Access docs: http://localhost:3000/docs
+    5. Access Temporal UI: http://localhost:8233
+
+servers:
+  - url: http://localhost:3000
+    description: Development server
+  - url: https://api.crossborder-payments.com
+    description: Production server (example)
+
+security:
+  - bearerAuth: []
+  - apiKeyAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token for user authentication
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for programmatic access
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Unique key to prevent duplicate requests. Must be a valid UUID v4.
+      schema:
+        type: string
+        format: uuid
+        example: "550e8400-e29b-41d4-a716-446655440000"
+    
+    PaymentId:
+      name: paymentId
+      in: path
+      required: true
+      description: Payment identifier
+      schema:
+        type: string
+        format: uuid
+        example: "550e8400-e29b-41d4-a716-446655440000"
+
+  schemas:
+    CreatePaymentRequest:
+      type: object
+      required:
+        - user_id
+        - source_amount
+        - source_currency
+        - destination_currency
+      properties:
+        user_id:
+          type: string
+          description: User identifier
+          example: "user_123"
+        source_amount:
+          type: number
+          minimum: 1
+          description: Amount in source currency
+          example: 100
+        source_currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          description: Source currency code (ISO 4217)
+          example: "USD"
+        destination_currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          description: Destination currency code (ISO 4217)
+          example: "EUR"
+        webhook_url:
+          type: string
+          format: uri
+          description: Optional webhook URL for payment status updates
+          example: "https://your-app.com/webhooks/payment-status"
+        metadata:
+          type: object
+          description: Additional payment metadata
+          example:
+            description: "Payment for services"
+            reference: "INV-001"
+            customer_id: "cust_123"
+
+    PaymentResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Payment identifier
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        status:
+          type: string
+          enum: [pending, processing, onramp_processing, onramp_complete, offramp_processing, completed, failed, cancelled]
+          description: Current payment status
+          example: "processing"
+        source_amount:
+          type: number
+          description: Amount in source currency
+          example: 100
+        source_currency:
+          type: string
+          description: Source currency
+          example: "USD"
+        destination_amount:
+          type: number
+          description: Amount in destination currency
+          example: 84.53
+        destination_currency:
+          type: string
+          description: Destination currency
+          example: "EUR"
+        exchange_rate:
+          type: number
+          description: Exchange rate used for conversion
+          example: 0.84531
+        fee_amount:
+          type: number
+          description: Total fees charged
+          example: 2.50
+        total_amount:
+          type: number
+          description: Total amount including fees
+          example: 102.50
+        estimated_completion:
+          type: string
+          format: date-time
+          description: Estimated completion time
+          example: "2024-01-15T10:30:00Z"
+        created_at:
+          type: string
+          format: date-time
+          description: Payment creation timestamp
+          example: "2024-01-15T10:00:00Z"
+        workflow_id:
+          type: string
+          description: Temporal workflow identifier
+          example: "payment-workflow-550e8400-e29b-41d4-a716-446655440000"
+
+    EstimateFeesRequest:
+      type: object
+      required:
+        - source_amount
+        - source_currency
+        - destination_currency
+      properties:
+        source_amount:
+          type: number
+          minimum: 1
+          description: Amount in source currency
+          example: 100
+        source_currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          description: Source currency code
+          example: "USD"
+        destination_currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          description: Destination currency code
+          example: "EUR"
+
+    FeeEstimateResponse:
+      type: object
+      properties:
+        source_amount:
+          type: number
+          description: Amount in source currency
+          example: 100
+        source_currency:
+          type: string
+          description: Source currency
+          example: "USD"
+        destination_amount:
+          type: number
+          description: Amount in destination currency
+          example: 84.53
+        destination_currency:
+          type: string
+          description: Destination currency
+          example: "EUR"
+        exchange_rate:
+          type: number
+          description: Current exchange rate
+          example: 0.84531
+        fee_breakdown:
+          type: object
+          properties:
+            base_fee:
+              type: number
+              description: Fixed base fee
+              example: 2.50
+            percentage_fee:
+              type: number
+              description: Percentage-based fee
+              example: 1.25
+            total_fee:
+              type: number
+              description: Total fee amount
+              example: 3.75
+            currency:
+              type: string
+              description: Fee currency
+              example: "EUR"
+        total_cost:
+          type: number
+          description: Total cost in source currency
+          example: 104.44
+
+    WorkflowStatusResponse:
+      type: object
+      properties:
+        workflow_id:
+          type: string
+          description: Temporal workflow identifier
+          example: "payment-workflow-550e8400-e29b-41d4-a716-446655440000"
+        execution_status:
+          type: string
+          enum: [RUNNING, COMPLETED, FAILED, TIMEOUT, CANCELED]
+          description: Workflow execution status
+          example: "RUNNING"
+        start_time:
+          type: string
+          format: date-time
+          description: Workflow start time
+          example: "2024-01-15T10:00:00Z"
+        close_time:
+          type: string
+          format: date-time
+          description: Workflow close time (if completed)
+          example: "2024-01-15T10:05:00Z"
+        history_length:
+          type: integer
+          description: Number of workflow history events
+          example: 15
+        task_queue:
+          type: string
+          description: Task queue name
+          example: "payment-processing"
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          description: User email address
+          example: "user@example.com"
+        password:
+          type: string
+          minLength: 8
+          description: User password
+          example: "securepassword123"
+
+    LoginResponse:
+      type: object
+      properties:
+        auth_token:
+          type: string
+          description: JWT access token
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        user:
+          $ref: '#/components/schemas/User'
+        expires_in:
+          type: integer
+          description: Token expiration time in seconds
+          example: 3600
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: User identifier
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        email:
+          type: string
+          format: email
+          description: User email address
+          example: "user@example.com"
+        name:
+          type: string
+          description: User display name
+          example: "John Doe"
+        role:
+          type: string
+          enum: [admin, user, readonly]
+          description: User role
+          example: "user"
+        is_active:
+          type: boolean
+          description: Whether user account is active
+          example: true
+        created_at:
+          type: string
+          format: date-time
+          description: Account creation time
+          example: "2024-01-15T10:00:00Z"
+
+    WebhookTestRequest:
+      type: object
+      required:
+        - webhook_url
+      properties:
+        webhook_url:
+          type: string
+          format: uri
+          description: Webhook URL to test
+          example: "https://httpbin.org/post"
+
+    WebhookTestResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          description: Whether webhook delivery was successful
+          example: true
+        response_time:
+          type: integer
+          description: Response time in milliseconds
+          example: 245
+        status:
+          type: integer
+          description: HTTP status code
+          example: 200
+        error:
+          type: string
+          description: Error message if delivery failed
+          example: "Connection timeout"
+
+    ApiResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          description: Request success status
+          example: true
+        data:
+          description: Response data (varies by endpoint)
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              description: Error code
+              example: "VALIDATION_ERROR"
+            message:
+              type: string
+              description: Error message
+              example: "Invalid request parameters"
+            details:
+              type: array
+              items:
+                type: object
+              description: Detailed error information
+        timestamp:
+          type: string
+          format: date-time
+          description: Response timestamp
+          example: "2024-01-15T10:00:00Z"
+
+    Currency:
+      type: object
+      properties:
+        currency:
+          type: string
+          description: Currency code
+          example: "EUR"
+        base_fee:
+          type: number
+          description: Base fee amount
+          example: 2.50
+        percentage_fee:
+          type: number
+          description: Percentage fee rate
+          example: 0.025
+        minimum_fee:
+          type: number
+          description: Minimum fee amount
+          example: 1.00
+        maximum_fee:
+          type: number
+          description: Maximum fee amount
+          example: 50.00
+
+paths:
+  /health:
+    get:
+      tags:
+        - System
+      summary: Health check
+      description: Check if the API is healthy and running
+      responses:
+        '200':
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "healthy"
+                  timestamp:
+                    type: string
+                    format: date-time
+                  uptime:
+                    type: number
+                    description: Server uptime in seconds
+                  version:
+                    type: string
+                    example: "1.0.0"
+
+  /api/v1/payments:
+    post:
+      tags:
+        - Payments
+      summary: Create a new payment
+      description: |
+        Create a new cross-border payment with Temporal workflow orchestration.
+        
+        The payment will be processed through the following stages:
+        1. **Validation**: Verify payment details and user permissions
+        2. **Fee Calculation**: Calculate fees based on amount and destination
+        3. **Onramp Processing**: Convert USD to stablecoin (mock)
+        4. **Offramp Processing**: Convert stablecoin to local currency (mock)
+        5. **Completion**: Update payment status and send webhooks
+        
+        **Idempotency**: Use the same `Idempotency-Key` to safely retry requests.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePaymentRequest'
+      responses:
+        '201':
+          description: Payment created successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PaymentResponse'
+        '400':
+          description: Bad request - validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+        '429':
+          description: Too many requests - rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/v1/payments/estimate-fees:
+    post:
+      tags:
+        - Payments
+      summary: Estimate payment fees
+      description: |
+        Get a fee estimate for a cross-border payment without creating the payment.
+        
+        This endpoint is useful for:
+        - Showing users the total cost before they commit
+        - Comparing fees across different currencies
+        - Pre-validation of payment parameters
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EstimateFeesRequest'
+      responses:
+        '200':
+          description: Fee estimate calculated successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/FeeEstimateResponse'
+        '400':
+          description: Bad request - invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/v1/payments/supported-currencies:
+    get:
+      tags:
+        - Payments
+      summary: Get supported currencies
+      description: |
+        Retrieve all supported destination currencies with their fee structures.
+        
+        Each currency includes:
+        - Base fee (fixed amount)
+        - Percentage fee (variable rate)
+        - Minimum and maximum fee limits
+      responses:
+        '200':
+          description: Supported currencies retrieved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Currency'
+
+  /api/v1/payments/{paymentId}/workflow-status:
+    get:
+      tags:
+        - Payments
+      summary: Get workflow status for a payment
+      description: |
+        Retrieve the Temporal workflow status for a specific payment.
+        
+        This endpoint provides real-time information about:
+        - Workflow execution status
+        - Start and completion times
+        - History length and task queue
+        - Any workflow errors or timeouts
+      parameters:
+        - $ref: '#/components/parameters/PaymentId'
+      responses:
+        '200':
+          description: Workflow status retrieved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/WorkflowStatusResponse'
+        '404':
+          description: Payment or workflow not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/v1/payments/{paymentId}/cancel:
+    post:
+      tags:
+        - Payments
+      summary: Cancel a payment
+      description: |
+        Cancel a payment that is still in progress.
+        
+        **Note**: Only payments in certain statuses can be cancelled:
+        - `pending`
+        - `processing`
+        - `onramp_processing`
+        
+        Completed, failed, or already cancelled payments cannot be cancelled.
+      parameters:
+        - $ref: '#/components/parameters/PaymentId'
+      responses:
+        '200':
+          description: Payment cancelled successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PaymentResponse'
+        '400':
+          description: Payment cannot be cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+        '404':
+          description: Payment not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/v1/auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: User login
+      description: |
+        Authenticate a user with email and password to receive a JWT token.
+        
+        The token should be included in subsequent requests as a Bearer token
+        in the Authorization header.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/v1/auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: User logout
+      description: |
+        Logout the current user and invalidate their JWT token.
+        
+        **Note**: Requires authentication via Bearer token.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Logout successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+        '401':
+          description: Unauthorized - invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/v1/webhooks/test:
+    post:
+      tags:
+        - Webhooks
+      summary: Test webhook delivery
+      description: |
+        Test webhook delivery to a specified URL.
+        
+        This endpoint is useful for:
+        - Validating webhook URLs before using them in payments
+        - Testing webhook payload format
+        - Verifying webhook delivery reliability
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookTestRequest'
+      responses:
+        '200':
+          description: Webhook test completed
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/WebhookTestResponse'
+
+  /api/v1/webhooks/stats:
+    get:
+      tags:
+        - Webhooks
+      summary: Get webhook delivery statistics
+      description: |
+        Retrieve statistics about webhook delivery performance.
+        
+        Includes metrics such as:
+        - Total webhooks sent
+        - Success/failure rates
+        - Average response times
+        - Recent delivery attempts
+      responses:
+        '200':
+          description: Webhook statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          total_webhooks:
+                            type: integer
+                            description: Total webhooks sent
+                          success_rate:
+                            type: number
+                            description: Success rate (0-1)
+                          avg_response_time:
+                            type: number
+                            description: Average response time in ms
+                          recent_attempts:
+                            type: array
+                            items:
+                              type: object
+
+  /api/v1/admin/users:
+    get:
+      tags:
+        - Admin
+      summary: List all users
+      description: |
+        Retrieve a list of all users in the system.
+        
+        **Note**: Requires admin authentication.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          description: Page number for pagination
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Number of users per page
+      responses:
+        '200':
+          description: Users retrieved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          users:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/User'
+                          pagination:
+                            type: object
+                            properties:
+                              page:
+                                type: integer
+                              limit:
+                                type: integer
+                              total:
+                                type: integer
+                              pages:
+                                type: integer
+        '401':
+          description: Unauthorized - admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+        '403':
+          description: Forbidden - insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/v1/ledger/transactions:
+    get:
+      tags:
+        - Ledger
+      summary: Get transaction ledger
+      description: |
+        Retrieve a paginated list of all transactions.
+        
+        Useful for:
+        - Financial reporting
+        - Audit trails
+        - Transaction history
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          description: Page number for pagination
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Number of transactions per page
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, processing, completed, failed, cancelled]
+          description: Filter by transaction status
+        - name: currency
+          in: query
+          schema:
+            type: string
+          description: Filter by currency
+      responses:
+        '200':
+          description: Transactions retrieved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          transactions:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/PaymentResponse'
+                          pagination:
+                            type: object
+                            properties:
+                              page:
+                                type: integer
+                              limit:
+                                type: integer
+                              total:
+                                type: integer
+                              pages:
+                                type: integer
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+tags:
+  - name: System
+    description: System health and status endpoints
+  - name: Payments
+    description: Payment creation, management, and status tracking
+  - name: Authentication
+    description: User authentication and session management
+  - name: Webhooks
+    description: Webhook testing and delivery management
+  - name: Admin
+    description: Administrative operations (admin access required)
+  - name: Ledger
+    description: Transaction ledger and financial reporting 

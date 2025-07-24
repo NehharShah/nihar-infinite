@@ -1,13 +1,13 @@
-# Cross-Border Payment API
+# Cross-Border Payment API with Temporal Workflows
 
-This provides a comprehensive payment processing system with full security, authentication, audit logging, and monitoring capabilities. 
-**API-First Design** - No frontend, pure REST API with comprehensive documentation.
+This provides a comprehensive payment processing system with full security, authentication, audit logging, monitoring capabilities, and **Temporal workflow orchestration**. 
+**API-First Design** - No frontend, pure REST API with comprehensive documentation and robust workflow management.
 
 ## 📚 **API Documentation**
 
 - **Interactive API Docs**: [http://localhost:3000/docs](http://localhost:3000/docs)
-
 - **Health Check**: [http://localhost:3000/health](http://localhost:3000/health)
+- **File Upload Demo**: [http://localhost:3000/upload-demo](http://localhost:3000/upload-demo)
 
 ## 🚀  Features
 
@@ -20,7 +20,21 @@ This provides a comprehensive payment processing system with full security, auth
 - **Rate Limiting**: IP-based rate limiting with configurable limits
 - **Audit Logging**: Comprehensive audit trail for compliance
 
+### ⚡ **Temporal Workflow Orchestration**
+- **Robust Payment Workflows**: Reliable, fault-tolerant payment processing
+- **Automatic Retries**: Built-in retry logic with exponential backoff
+- **Workflow Monitoring**: Real-time workflow status and monitoring
+- **Fault Tolerance**: Automatic recovery from failures and timeouts
+- **Scalable Processing**: Horizontal scaling of payment workers
+- **Workflow History**: Complete audit trail of all workflow executions
 
+### 📁 **File Upload System**
+- **Secure File Uploads**: Direct upload to GCP buckets with signed URLs
+- **Resource-Based Organization**: Files organized by payment, account, customer, transfer
+- **Progress Feedback**: Real-time upload progress tracking
+- **File Validation**: Type and size validation with configurable limits
+- **Download Management**: Secure download URLs with expiration
+- **Frontend Integration**: Ready-to-use HTML/JavaScript demo
 
 ## 🏗️ **Architecture**
 
@@ -44,6 +58,7 @@ This provides a comprehensive payment processing system with full security, auth
                     │  │   Exchange Rates      ││
                     │  │   Fee Engine          ││
                     │  │   Webhook Service     ││
+                    │  │   Temporal Workflows  ││
                     │  └───────────────────────┘│
                     └─────────────┬─────────────┘
                                   │
@@ -53,6 +68,15 @@ This provides a comprehensive payment processing system with full security, auth
                     │  │   PostgreSQL (Prod)   ││
                     │  │   SQLite (Dev)        ││
                     │  │   Redis (Cache)       ││
+                    │  └───────────────────────┘│
+                    └─────────────────────────────┘
+                    ┌─────────────▼─────────────┐
+                    │    Temporal Server        │
+                    │  ┌───────────────────────┐│
+                    │  │   Workflow Engine     ││
+                    │  │   Task Queues         ││
+                    │  │   History Store       ││
+                    │  │   UI Dashboard        ││
                     │  └───────────────────────┘│
                     └─────────────────────────────┘
 ```
@@ -85,8 +109,54 @@ npm start
 ### 3. **Access the API**
 - **API Documentation**: http://localhost:3000/docs
 - **Health Check**: http://localhost:3000/health
-- **API Documentation**: http://localhost:3000/docs
-- **Health Check**: http://localhost:3000/health
+
+## ⚡ **Temporal Workflow Setup**
+
+### 1. **Install Temporal CLI**
+```bash
+# macOS
+brew install temporal
+
+# Linux
+curl -sSf https://temporal.download/cli.sh | sh
+
+# Windows
+# Download from https://github.com/temporalio/cli/releases
+```
+
+### 2. **Start Temporal Server**
+```bash
+# Start Temporal server in development mode
+temporal server start-dev
+
+# Or use the npm script
+npm run temporal:start
+```
+
+### 3. **Start Payment Workers**
+```bash
+# In a new terminal, start the payment processing workers
+npm run worker
+```
+
+### 4. **Access Temporal UI**
+- **Temporal Dashboard**: http://localhost:8233
+- **View Workflows**: Monitor payment processing in real-time
+- **Task Queues**: Check task queue status and performance
+- **Workflow History**: Complete audit trail of all executions
+
+### 5. **Environment Variables**
+```bash
+# Temporal Configuration
+TEMPORAL_ADDRESS=localhost:7233
+TEMPORAL_NAMESPACE=default
+TEMPORAL_AUTO_START=true
+
+# Development Settings
+NODE_ENV=development
+TEMPORAL_METRICS_ENABLED=true
+TEMPORAL_TRACING_ENABLED=true
+```
 
 ## 🔐 **Authentication**
 
@@ -144,6 +214,13 @@ curl -X POST http://localhost:3000/api/v1/payments \
 ### Webhook Management
 - `POST /api/v1/webhooks/test` - Test webhook delivery
 - `GET /api/v1/webhooks/{webhookId}` - Get webhook status
+
+### File Upload Operations
+- `POST /api/v1/uploads/generate-url` - Generate upload URL for file
+- `POST /api/v1/uploads/{fileId}/complete` - Mark file upload as complete
+- `GET /api/v1/uploads/resource/{resourceType}/{resourceId}` - Get files for resource
+- `GET /api/v1/uploads/{fileId}/download` - Generate download URL
+- `DELETE /api/v1/uploads/{fileId}` - Delete file
 
 
 

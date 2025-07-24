@@ -94,6 +94,88 @@ router.post(
 
 /**
  * @swagger
+ * /api/v1/payments/{paymentId}/workflow-status:
+ *   get:
+ *     summary: Get workflow status for a payment
+ *     tags: [Payments]
+ *     parameters:
+ *       - in: path
+ *         name: paymentId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Payment ID
+ *     responses:
+ *       200:
+ *         description: Workflow status retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               allOf:
+ *                 - $ref: '#/components/schemas/ApiResponse'
+ *                 - type: object
+ *                   properties:
+ *                     data:
+ *                       type: object
+ *                       properties:
+ *                         workflowId:
+ *                           type: string
+ *                         status:
+ *                           type: string
+ *                         executionStatus:
+ *                           type: string
+ *       404:
+ *         description: Payment not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiResponse'
+ */
+router.get(
+  '/:paymentId/workflow-status',
+  async (req: Request, res: Response) => {
+    try {
+      const { paymentId } = req.params;
+      const workflowStatus = await paymentOrchestrator.getWorkflowStatus(paymentId);
+      
+      if (!workflowStatus) {
+        const response: ApiResponse<never> = {
+          success: false,
+          error: {
+            code: 'WORKFLOW_NOT_FOUND',
+            message: 'Workflow not found for this payment'
+          },
+          timestamp: new Date().toISOString()
+        };
+        return res.status(404).json(response);
+      }
+
+      const response: ApiResponse<any> = {
+        success: true,
+        data: workflowStatus,
+        timestamp: new Date().toISOString()
+      };
+
+      res.status(200).json(response);
+    } catch (error: any) {
+      console.error('Error getting workflow status:', error);
+      
+      const response: ApiResponse<never> = {
+        success: false,
+        error: {
+          code: 'WORKFLOW_STATUS_ERROR',
+          message: error.message || 'Failed to get workflow status'
+        },
+        timestamp: new Date().toISOString()
+      };
+
+      res.status(500).json(response);
+    }
+  }
+);
+
+/**
+ * @swagger
  * /api/v1/payments/supported-currencies:
  *   get:
  *     summary: Get supported currencies

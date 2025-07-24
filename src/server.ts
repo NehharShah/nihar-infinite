@@ -10,6 +10,7 @@ import webhookRoutes from './routes/webhooks.js';
 import adminRoutes from './routes/admin.js';
 import authRoutes from './routes/auth.js';
 import ledgerRoutes from './routes/ledger.js';
+import uploadRoutes from './routes/uploads.js';
 
 import { errorHandler } from './middleware/errorHandler.js';
 import { requestLogger } from './middleware/requestLogger.js';
@@ -119,6 +120,11 @@ const swaggerUiOptions = {
 // API Documentation
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(specs, swaggerUiOptions));
 
+// File Upload Demo
+app.get('/upload-demo', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/file-upload-demo.html'));
+});
+
 // API Landing Page
 app.get('/', (req, res) => {
   res.json({
@@ -127,12 +133,14 @@ app.get('/', (req, res) => {
     description: 'A comprehensive API for cross-border payments, supporting both fiat-to-stablecoin and stablecoin-to-fiat conversions.',
     documentation: `${req.protocol}://${req.get('host')}/docs`,
     health: `${req.protocol}://${req.get('host')}/health`,
+    uploadDemo: `${req.protocol}://${req.get('host')}/upload-demo`,
     endpoints: {
       auth: `${req.protocol}://${req.get('host')}/api/v1/auth`,
       payments: `${req.protocol}://${req.get('host')}/api/v1/payments`,
       webhooks: `${req.protocol}://${req.get('host')}/api/v1/webhooks`,
       admin: `${req.protocol}://${req.get('host')}/api/v1/admin`,
-      ledger: `${req.protocol}://${req.get('host')}/api/v1/ledger`
+      ledger: `${req.protocol}://${req.get('host')}/api/v1/ledger`,
+      uploads: `${req.protocol}://${req.get('host')}/api/v1/uploads`
     },
     features: [
       'User authentication with JWT tokens',
@@ -142,7 +150,8 @@ app.get('/', (req, res) => {
       'Real-time webhook notifications',
       'Comprehensive audit logging',
       'Admin dashboard for user management',
-      'Transaction ledger and analytics'
+      'Transaction ledger and analytics',
+      'File upload system with GCP bucket integration'
     ],
     timestamp: new Date().toISOString()
   });
@@ -154,6 +163,7 @@ app.use('/api/v1/payments', paymentLimiter, paymentRoutes);
 app.use('/api/v1/webhooks', webhookLimiter, webhookRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/ledger', ledgerRoutes);
+app.use('/api/v1/uploads', uploadRoutes);
 
 
 // Error handling middleware
